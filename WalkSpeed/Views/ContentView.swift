@@ -47,6 +47,13 @@ struct ContentView: View {
             }
             .navigationTitle("WalkSpeed")
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    NavigationLink {
+                        WalkHistoryView()
+                    } label: {
+                        Label("Walks", systemImage: "clock.arrow.circlepath")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Settings", systemImage: "gearshape") {
                         isShowingSettings = true
