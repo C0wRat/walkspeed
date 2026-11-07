@@ -142,7 +142,9 @@ final class SpeedMonitor {
     private func handle(_ reading: MotionReading) {
         guard isMonitoring else { return }
         readings.motion = reading
-        apply(estimator.addPedometer(speed: reading.speed, at: reading.timestamp))
+        if let speed = reading.speed {
+            apply(estimator.addPedometer(speed: speed, at: reading.timestamp))
+        }
     }
 
     /// Runs every second, so stale readings expire and alerts repeat on time

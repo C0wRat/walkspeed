@@ -122,10 +122,11 @@ struct SettingsView: View {
 
     private var pedometerReading: String {
         guard let reading = monitor.readings.motion else { return "No steps yet" }
-        var parts = [format(reading.speed)]
+        var parts = [reading.speed.map(format) ?? "No pace"]
         if let cadence = reading.cadence {
             parts.append("\(Int((cadence * 60).rounded())) steps/min")
         }
+        parts.append("\(reading.steps.formatted()) steps")
         if !monitor.isPedometerActive {
             parts.append("stopped")
         }
