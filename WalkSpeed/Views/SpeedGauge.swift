@@ -47,6 +47,7 @@ struct SpeedGauge: View {
             Text(speed.map { unit.formatted($0) } ?? "–")
                 .font(.system(size: 88, weight: .bold, design: .rounded))
                 .monospacedDigit()
+                .foregroundStyle(speed == nil ? .tertiary : .primary)
                 .contentTransition(.numericText(value: speed ?? 0))
                 .lineLimit(1)
                 .minimumScaleFactor(0.4)

@@ -67,7 +67,7 @@ struct ContentView: View {
                 .foregroundStyle(status.color)
                 .multilineTextAlignment(.center)
             if monitor.isMonitoring {
-                SignalBadge(signal: monitor.signal)
+                SensorBadges(gps: monitor.signal, isPedometerActive: monitor.isPedometerActive)
             }
         }
         .animation(.default, value: monitor.zone)

@@ -17,6 +17,10 @@ public struct SpeedSmoother: Sendable {
     /// reading arrived within the window.
     public private(set) var speed: Double?
 
+    /// The median speed accuracy of the readings in the window, in metres per
+    /// second, or `nil` when there are none.
+    public private(set) var accuracy: Double?
+
     private var readings: [SpeedSample] = []
     private var latestTimestamp: Date?
 
@@ -48,6 +52,7 @@ public struct SpeedSmoother: Sendable {
     public mutating func advance(to date: Date) -> Double? {
         readings.removeAll { date.timeIntervalSince($0.timestamp) > window }
         speed = median(of: readings.map(\.speed))
+        accuracy = median(of: readings.map(\.speedAccuracy))
         return speed
     }
 
@@ -56,6 +61,7 @@ public struct SpeedSmoother: Sendable {
         readings.removeAll()
         latestTimestamp = nil
         speed = nil
+        accuracy = nil
     }
 
     private func median(of values: [Double]) -> Double? {

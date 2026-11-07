@@ -30,6 +30,31 @@ enum LocationAccess: Equatable, Sendable {
     }
 }
 
+/// A location fix, reduced to what WalkSpeed needs.
+struct LocationReading: Sendable {
+    var sample: SpeedSample
+    /// Whether developer tools such as Xcode or devicectl simulated the fix.
+    var isSimulated: Bool
+    /// The uncertainty of the position in metres.
+    var horizontalAccuracy: Double
+
+    /// The speed accuracy assumed for simulated fixes, in metres per second.
+    private static let simulatedSpeedAccuracy = 0.3
+
+    init(_ location: CLLocation) {
+        isSimulated = location.sourceInformation?.isSimulatedBySoftware ?? false
+        horizontalAccuracy = location.horizontalAccuracy
+        var speedAccuracy = location.speedAccuracy
+        // Simulated fixes carry a speed but no speed accuracy. Trust them, so
+        // the alerts can be tested on a phone without walking. Real fixes
+        // without an accuracy are still rejected.
+        if isSimulated, location.speed >= 0, speedAccuracy < 0 {
+            speedAccuracy = Self.simulatedSpeedAccuracy
+        }
+        sample = SpeedSample(timestamp: location.timestamp, speed: location.speed, speedAccuracy: speedAccuracy)
+    }
+}
+
 /// Streams speed readings from Core Location, including while WalkSpeed is in
 /// the background.
 ///
@@ -38,8 +63,8 @@ enum LocationAccess: Equatable, Sendable {
 /// the blue location indicator.
 @MainActor
 final class LocationSpeedProvider: NSObject {
-    /// Called with every reading.
-    var onSample: (@MainActor (SpeedSample) -> Void)?
+    /// Called with every location fix.
+    var onReading: (@MainActor (LocationReading) -> Void)?
     /// Called when the location permission changes.
     var onAccessChange: (@MainActor (LocationAccess) -> Void)?
 
@@ -91,12 +116,10 @@ final class LocationSpeedProvider: NSObject {
 // which is the main thread here.
 extension LocationSpeedProvider: CLLocationManagerDelegate {
     nonisolated func locationManager(_ manager: CLLocationManager, didUpdateLocations locations: [CLLocation]) {
-        let samples = locations.map {
-            SpeedSample(timestamp: $0.timestamp, speed: $0.speed, speedAccuracy: $0.speedAccuracy)
-        }
+        let readings = locations.map(LocationReading.init)
         MainActor.assumeIsolated {
-            for sample in samples {
-                onSample?(sample)
+            for reading in readings {
+                onReading?(reading)
             }
         }
     }

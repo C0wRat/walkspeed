@@ -17,6 +17,8 @@ than your limit.
 - **Runs in the background** with the phone locked. It only needs location
   permission while the app is in use; iOS shows a blue location indicator
   while WalkSpeed is monitoring.
+- **Works indoors too.** When GPS is weak or missing, the iPhone's pedometer
+  takes over. When both are available, they're combined.
 - **No false alarms from GPS noise.** Speeds are smoothed, the first beep waits
   until you've been over the limit for a moment, and alerts pause at vehicle
   speeds.
@@ -25,9 +27,14 @@ than your limit.
 
 ## How it works
 
-1. Core Location reports your speed about once a second.
-2. `SpeedSmoother` takes the median of the last four seconds of readings and
-   skips readings with poor accuracy.
+1. Core Location reports your speed about once a second. While you walk,
+   the pedometer in the motion coprocessor reports your pace every few
+   seconds.
+2. `SpeedSmoother` takes the median of the last four seconds of GPS readings
+   and skips readings with poor accuracy. `SpeedEstimator` then blends that
+   with the pedometer, weighting each by the inverse of its variance: strong
+   GPS dominates, weak GPS defers to the pedometer, and either carries on
+   alone when the other drops out.
 3. `OverspeedDetector` starts an alert once the smoothed speed has been over
    the limit for the alert delay (2 seconds by default). It repeats every
    repeat interval (5 seconds by default) until you slow down. A small

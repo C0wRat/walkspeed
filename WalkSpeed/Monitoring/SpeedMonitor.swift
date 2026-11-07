@@ -2,18 +2,31 @@ import Foundation
 import Observation
 import WalkSpeedCore
 
-/// Connects the location readings to the alert logic and the beeps, and
-/// publishes the live state for the UI.
+/// The latest raw reading from each sensor, for the sensor readout in
+/// Settings.
+struct SensorReadings {
+    var location: LocationReading?
+    var motion: MotionReading?
+}
+
+/// Connects the GPS and pedometer readings to the alert logic and the beeps,
+/// and publishes the live state for the UI.
 @MainActor
 @Observable
 final class SpeedMonitor {
     /// Whether a monitoring session is running.
     private(set) var isMonitoring = false
-    /// The smoothed walking speed in metres per second, or `nil` when it's
+    /// The estimated walking speed in metres per second, or `nil` when it's
     /// unknown.
     private(set) var speed: Double? = nil
-    /// How trustworthy the latest reading was.
+    /// The sensors the speed comes from, or `nil` when it's unknown.
+    private(set) var source: SpeedSource? = nil
+    /// How good the GPS signal is.
     private(set) var signal: SignalQuality = .unavailable
+    /// Whether the pedometer is reporting steps.
+    private(set) var isPedometerActive = false
+    /// The latest raw sensor readings.
+    private(set) var readings = SensorReadings()
     /// The location permission.
     private(set) var access: LocationAccess
     /// The running session, or the last one after monitoring stops.
@@ -24,16 +37,17 @@ final class SpeedMonitor {
     let preferences: Preferences
 
     @ObservationIgnored private let location: LocationSpeedProvider
+    @ObservationIgnored private let motion = MotionSpeedProvider()
     @ObservationIgnored private let beeper = BeepPlayer()
-    @ObservationIgnored private var smoother = SpeedSmoother()
+    @ObservationIgnored private var estimator = SpeedEstimator()
     @ObservationIgnored private var detector: OverspeedDetector
-    @ObservationIgnored private var staleReadingCheck: Task<Void, Never>? = nil
+    @ObservationIgnored private var ticker: Task<Void, Never>? = nil
     /// Whether to start monitoring once the pending permission prompt is
     /// answered with precise location.
     @ObservationIgnored private var startsWhenAllowed = false
     @ObservationIgnored private var askedForPreciseLocation = false
 
-    /// Readings older than this when they arrive are cached fixes, not the
+    /// Location fixes older than this when they arrive are cached, not the
     /// current speed.
     private static let maxReadingAge: TimeInterval = 5
 
@@ -44,11 +58,14 @@ final class SpeedMonitor {
         access = location.access
         detector = OverspeedDetector(configuration: preferences.alertConfiguration)
 
-        location.onSample = { [weak self] sample in
-            self?.handle(sample)
+        location.onReading = { [weak self] reading in
+            self?.handle(reading)
         }
         location.onAccessChange = { [weak self] access in
             self?.accessDidChange(to: access)
+        }
+        motion.onReading = { [weak self] reading in
+            self?.handle(reading)
         }
     }
 
@@ -77,11 +94,11 @@ final class SpeedMonitor {
     func stop() {
         guard isMonitoring else { return }
         location.stopUpdates()
-        staleReadingCheck?.cancel()
-        staleReadingCheck = nil
+        motion.stopUpdates()
+        ticker?.cancel()
+        ticker = nil
         isMonitoring = false
-        speed = nil
-        signal = .unavailable
+        clearLiveState()
         sessionEndDate = .now
     }
 
@@ -91,45 +108,61 @@ final class SpeedMonitor {
     }
 
     private func begin() {
-        smoother.reset()
+        estimator.reset()
         detector = OverspeedDetector(configuration: preferences.alertConfiguration)
         session = WalkSession(startDate: .now)
         sessionEndDate = nil
-        speed = nil
-        signal = .unavailable
+        readings = SensorReadings()
+        clearLiveState()
         isMonitoring = true
         location.startUpdates()
-        staleReadingCheck = Task { [weak self] in
+        motion.startUpdates()
+        ticker = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 guard let self else { return }
-                expireStaleReadings()
+                tick()
             }
         }
     }
 
-    private func handle(_ sample: SpeedSample) {
-        guard isMonitoring, -sample.timestamp.timeIntervalSinceNow < Self.maxReadingAge else { return }
-        signal = SignalQuality(speedAccuracy: sample.speedAccuracy)
-        update(speed: smoother.add(sample), at: sample.timestamp)
+    private func clearLiveState() {
+        speed = nil
+        source = nil
+        signal = .unavailable
+        isPedometerActive = false
     }
 
-    /// Clears the speed when readings stop arriving, for example indoors.
-    private func expireStaleReadings() {
-        guard isMonitoring, speed != nil else { return }
+    private func handle(_ reading: LocationReading) {
+        guard isMonitoring, -reading.sample.timestamp.timeIntervalSinceNow < Self.maxReadingAge else { return }
+        readings.location = reading
+        apply(estimator.addGPS(reading.sample))
+    }
+
+    private func handle(_ reading: MotionReading) {
+        guard isMonitoring else { return }
+        readings.motion = reading
+        apply(estimator.addPedometer(speed: reading.speed, at: reading.timestamp))
+    }
+
+    /// Runs every second, so stale readings expire and alerts repeat on time
+    /// even when the sensors go quiet.
+    private func tick() {
+        guard isMonitoring else { return }
+        apply(estimator.advance(to: .now))
+    }
+
+    private func apply(_ estimate: SpeedEstimate?) {
         let now = Date.now
-        if smoother.advance(to: now) == nil {
-            signal = .unavailable
-            update(speed: nil, at: now)
-        }
-    }
+        speed = estimate?.speed
+        source = estimate?.source
+        signal = SignalQuality(speedAccuracy: estimator.gpsAccuracy ?? -1)
+        isPedometerActive = estimator.pedometerSpeed != nil
 
-    private func update(speed newSpeed: Double?, at date: Date) {
-        speed = newSpeed
         let configuration = preferences.alertConfiguration
         detector.configuration = configuration
-        session?.record(speed: newSpeed, zone: PaceZone(speed: newSpeed, configuration: configuration), at: date)
-        guard let level = detector.update(speed: newSpeed, at: date) else { return }
+        session?.record(speed: speed, zone: PaceZone(speed: speed, configuration: configuration), at: now)
+        guard let level = detector.update(speed: speed, at: now) else { return }
         beeper.play(level, volume: preferences.beepVolume, lowersOtherAudio: preferences.lowersMusic)
         session?.recordAlert()
     }
