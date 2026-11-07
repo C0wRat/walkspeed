@@ -33,6 +33,8 @@ enum LocationAccess: Equatable, Sendable {
 /// A location fix, reduced to what WalkSpeed needs.
 struct LocationReading: Sendable {
     var sample: SpeedSample
+    var latitude: Double
+    var longitude: Double
     /// Whether developer tools such as Xcode or devicectl simulated the fix.
     var isSimulated: Bool
     /// The uncertainty of the position in metres.
@@ -43,6 +45,8 @@ struct LocationReading: Sendable {
 
     init(_ location: CLLocation) {
         isSimulated = location.sourceInformation?.isSimulatedBySoftware ?? false
+        latitude = location.coordinate.latitude
+        longitude = location.coordinate.longitude
         horizontalAccuracy = location.horizontalAccuracy
         var speedAccuracy = location.speedAccuracy
         // Simulated fixes carry a speed but no speed accuracy. Trust them, so

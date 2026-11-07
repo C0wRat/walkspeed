@@ -33,13 +33,18 @@ final class SpeedMonitor {
     private(set) var session: WalkSession? = nil
     /// When the last session stopped, or `nil` while it's running.
     private(set) var sessionEndDate: Date? = nil
+    /// The walk saved when monitoring last stopped.
+    private(set) var lastSavedWalk: Walk? = nil
 
     let preferences: Preferences
 
     @ObservationIgnored private let location: LocationSpeedProvider
     @ObservationIgnored private let motion = MotionSpeedProvider()
     @ObservationIgnored private let beeper = BeepPlayer()
+    @ObservationIgnored private let history: WalkHistory?
     @ObservationIgnored private var estimator = SpeedEstimator()
+    @ObservationIgnored private var route = RouteRecorder()
+    @ObservationIgnored private var trace: SpeedTrace? = nil
     @ObservationIgnored private var detector: OverspeedDetector
     @ObservationIgnored private var ticker: Task<Void, Never>? = nil
     /// Whether to start monitoring once the pending permission prompt is
@@ -51,10 +56,11 @@ final class SpeedMonitor {
     /// current speed.
     private static let maxReadingAge: TimeInterval = 5
 
-    init(preferences: Preferences) {
+    init(preferences: Preferences, history: WalkHistory? = nil) {
         let location = LocationSpeedProvider()
         self.location = location
         self.preferences = preferences
+        self.history = history
         access = location.access
         detector = OverspeedDetector(configuration: preferences.alertConfiguration)
 
@@ -89,8 +95,8 @@ final class SpeedMonitor {
         }
     }
 
-    /// Stops monitoring. The session's totals stay available until the next
-    /// start.
+    /// Stops monitoring and saves the walk. The session's totals stay
+    /// available until the next start.
     func stop() {
         guard isMonitoring else { return }
         location.stopUpdates()
@@ -99,7 +105,9 @@ final class SpeedMonitor {
         ticker = nil
         isMonitoring = false
         clearLiveState()
-        sessionEndDate = .now
+        let endDate = Date.now
+        sessionEndDate = endDate
+        saveWalk(endingAt: endDate)
     }
 
     /// Plays an alert pattern with the current sound settings.
@@ -110,8 +118,11 @@ final class SpeedMonitor {
     private func begin() {
         estimator.reset()
         detector = OverspeedDetector(configuration: preferences.alertConfiguration)
-        session = WalkSession(startDate: .now)
+        let startDate = Date.now
+        session = WalkSession(startDate: startDate)
         sessionEndDate = nil
+        route = RouteRecorder()
+        trace = SpeedTrace(startDate: startDate)
         readings = SensorReadings()
         clearLiveState()
         isMonitoring = true
@@ -137,6 +148,13 @@ final class SpeedMonitor {
         guard isMonitoring, -reading.sample.timestamp.timeIntervalSinceNow < Self.maxReadingAge else { return }
         readings.location = reading
         apply(estimator.addGPS(reading.sample))
+        let point = RoutePoint(
+            latitude: reading.latitude,
+            longitude: reading.longitude,
+            timestamp: reading.sample.timestamp,
+            isOverLimit: zone == .overLimit
+        )
+        route.add(point, horizontalAccuracy: reading.horizontalAccuracy)
     }
 
     private func handle(_ reading: MotionReading) {
@@ -164,9 +182,25 @@ final class SpeedMonitor {
         let configuration = preferences.alertConfiguration
         detector.configuration = configuration
         session?.record(speed: speed, zone: PaceZone(speed: speed, configuration: configuration), at: now)
+        trace?.add(speed: speed, at: now)
         guard let level = detector.update(speed: speed, at: now) else { return }
         beeper.play(level, volume: preferences.beepVolume, lowersOtherAudio: preferences.lowersMusic)
         session?.recordAlert()
+    }
+
+    private func saveWalk(endingAt endDate: Date) {
+        guard let session, var trace else { return }
+        trace.finish()
+        self.trace = nil
+        let summary = WalkSummary(
+            session: session,
+            endDate: endDate,
+            limit: preferences.limit,
+            routeDistance: route.distance,
+            pedometerDistance: readings.motion?.distance,
+            steps: readings.motion?.steps
+        )
+        lastSavedWalk = history?.save(summary, route: route.points, speedTrace: trace.points)
     }
 
     private func accessDidChange(to newAccess: LocationAccess) {
