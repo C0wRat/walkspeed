@@ -52,7 +52,8 @@ Naming rules:
   bumps PATCH. Other types allowed: `build`, `chore`, `ci`, `docs`, `perf`,
   `refactor`, `revert`, `style`, `test`.
 - **Scopes:** a noun naming the part of the code that changed. This repo uses
-  `core`, `location`, `audio`, `monitor`, `ui`, `settings` and `release`.
+  `core`, `location`, `motion`, `audio`, `monitor`, `ui`, `settings` and
+  `release`.
 - **Description:** imperative mood, lowercase, no trailing period. Keep the
   header to 72 characters or fewer.
 - **Body:** optional. Put one blank line after the header, then explain *why*
