@@ -72,11 +72,23 @@ struct SpeedSmootherTests {
         #expect(smoother.speed == 1.4)
     }
 
+    @Test func reportsTheMedianAccuracyOfTheWindow() {
+        var smoother = SpeedSmoother(window: 10)
+        #expect(smoother.accuracy == nil)
+        smoother.add(sample(at: 0, speed: 1.4, accuracy: 0.2))
+        smoother.add(sample(at: 1, speed: 1.4, accuracy: 0.9))
+        smoother.add(sample(at: 2, speed: 1.4, accuracy: 0.4))
+        #expect(smoother.accuracy == 0.4)
+        smoother.advance(to: date(20))
+        #expect(smoother.accuracy == nil)
+    }
+
     @Test func resetForgetsEverything() {
         var smoother = SpeedSmoother()
         smoother.add(sample(at: 5, speed: 1.4))
         smoother.reset()
         #expect(smoother.speed == nil)
+        #expect(smoother.accuracy == nil)
         // An earlier timestamp is accepted again after a reset.
         #expect(smoother.add(sample(at: 1, speed: 1.1)) == 1.1)
     }
