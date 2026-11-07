@@ -44,8 +44,8 @@ final class SpeedMonitor {
         access = location.access
         detector = OverspeedDetector(configuration: preferences.alertConfiguration)
 
-        location.onSample = { [weak self] sample in
-            self?.handle(sample)
+        location.onReading = { [weak self] reading in
+            self?.handle(reading.sample)
         }
         location.onAccessChange = { [weak self] access in
             self?.accessDidChange(to: access)
