@@ -1,0 +1,41 @@
+#!/bin/sh
+# Rejects commit messages that don't follow Conventional Commits 1.0.0.
+# https://www.conventionalcommits.org/en/v1.0.0/
+
+message_file="$1"
+message=$(grep -v '^#' "$message_file")
+header=$(printf '%s\n' "$message" | sed -n '1p')
+
+# Let messages that git itself generates through.
+case "$header" in
+    "Merge "* | "Revert \""* | "fixup! "* | "squash! "* | "amend! "*) exit 0 ;;
+esac
+
+types='build|chore|ci|docs|feat|fix|perf|refactor|revert|style|test'
+pattern="^($types)(\([a-z0-9][a-z0-9-]*\))?!?: [^ ](.*[^. ])?$"
+
+if ! printf '%s\n' "$header" | grep -Eq "$pattern"; then
+    cat >&2 <<EOF
+commit-msg: this header doesn't follow Conventional Commits:
+
+    $header
+
+Expected:  <type>[(scope)][!]: <description>
+Types:     build chore ci docs feat fix perf refactor revert style test
+Example:   feat(audio): duck music while an alert plays
+
+The description can't be empty or end with a period.
+See CONTRIBUTING.md.
+EOF
+    exit 1
+fi
+
+if [ "${#header}" -gt 72 ]; then
+    echo "commit-msg: the header is ${#header} characters long; keep it to 72 or fewer." >&2
+    exit 1
+fi
+
+if [ -n "$(printf '%s\n' "$message" | sed -n '2p')" ]; then
+    echo "commit-msg: leave one blank line between the header and the body." >&2
+    exit 1
+fi

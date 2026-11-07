@@ -1,0 +1,28 @@
+#!/bin/sh
+# Rejects commits on branches whose names don't follow Conventional Branch 1.1.0.
+# https://conventionalbranch.org/
+
+# Detached HEAD (rebase, bisect, …): nothing to check.
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+
+case "$branch" in
+    main | master | develop) exit 0 ;;
+esac
+
+types='feature|feat|bugfix|fix|hotfix|release|chore|ai|claude|codex|copilot|cursor'
+pattern="^($types)/[a-z0-9]+([.-][a-z0-9]+)*$"
+
+if ! printf '%s\n' "$branch" | grep -Eq "$pattern"; then
+    cat >&2 <<EOF
+pre-commit: the branch name "$branch" doesn't follow Conventional Branch.
+
+Expected:  <type>/<description>
+Types:     feature bugfix hotfix release chore (aliases: feat fix)
+Rules:     lowercase a-z, 0-9 and hyphens; dots only in versions;
+           no leading, trailing or repeated hyphens or dots
+Examples:  feature/speed-alert-engine  bugfix/gps-speed-spikes  release/v1.0.0
+
+Rename it with:  git branch -m <type>/<description>
+EOF
+    exit 1
+fi
