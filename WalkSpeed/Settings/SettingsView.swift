@@ -71,8 +71,20 @@ struct SettingsView: View {
                     Text("One beep means you're just over your limit, two means clearly over, three means well over. Beeps play at your media volume, through headphones when they're connected.")
                 }
 
+                if monitor.isMonitoring {
+                    Section {
+                        LabeledContent("GPS", value: gpsReading)
+                        LabeledContent("Pedometer", value: pedometerReading)
+                        LabeledContent("Combined", value: combinedReading)
+                    } header: {
+                        Text("Live sensors")
+                    } footer: {
+                        Text("GPS is the most accurate outdoors. The pedometer works anywhere once you're walking and takes over when GPS is weak.")
+                    }
+                }
+
                 Section("About") {
-                    Text("WalkSpeed measures your speed with GPS, so it works best outdoors. Alerts pause above \(vehicleSpeedText), when you're probably not walking.")
+                    Text("WalkSpeed measures your speed with GPS and your iPhone's pedometer, so it also works indoors. Alerts pause above \(vehicleSpeedText), when you're probably not walking.")
                     Text("While WalkSpeed is monitoring, iOS shows a blue location indicator. Stop monitoring when your walk is over to save battery.")
                 }
                 .font(.subheadline)
@@ -86,6 +98,48 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    private func format(_ speed: Double) -> String {
+        "\(preferences.unit.formatted(speed)) \(preferences.unit.symbol)"
+    }
+
+    private var gpsReading: String {
+        guard let reading = monitor.readings.location else { return "Waiting…" }
+        let sample = reading.sample
+        var parts = [sample.speed >= 0 ? format(sample.speed) : "No speed"]
+        if sample.speedAccuracy >= 0 {
+            parts[0] += " ±\(preferences.unit.formatted(sample.speedAccuracy))"
+        }
+        if reading.horizontalAccuracy >= 0 {
+            parts.append("\(Int(reading.horizontalAccuracy.rounded())) m")
+        }
+        if reading.isSimulated {
+            parts.append("simulated")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var pedometerReading: String {
+        guard let reading = monitor.readings.motion else { return "No steps yet" }
+        var parts = [format(reading.speed)]
+        if let cadence = reading.cadence {
+            parts.append("\(Int((cadence * 60).rounded())) steps/min")
+        }
+        if !monitor.isPedometerActive {
+            parts.append("stopped")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private var combinedReading: String {
+        guard let speed = monitor.speed, let source = monitor.source else { return "Unknown" }
+        let sourceName = switch source {
+        case .gps: "GPS"
+        case .pedometer: "pedometer"
+        case .gpsAndPedometer: "GPS and pedometer"
+        }
+        return "\(format(speed)) from \(sourceName)"
     }
 
     private var vehicleSpeedText: String {
