@@ -6,6 +6,7 @@ struct ContentView: View {
     @Environment(SpeedMonitor.self) private var monitor
     @Environment(Preferences.self) private var preferences
     @State private var isShowingSettings = false
+    @State private var summaryWalk: Walk?
 
     var body: some View {
         @Bindable var preferences = preferences
@@ -54,6 +55,19 @@ struct ContentView: View {
             }
             .sheet(isPresented: $isShowingSettings) {
                 SettingsView()
+            }
+            .sheet(item: $summaryWalk) { walk in
+                NavigationStack {
+                    WalkSummaryView(walk: walk)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { summaryWalk = nil }
+                            }
+                        }
+                }
+            }
+            .onChange(of: monitor.lastSavedWalk) { _, walk in
+                summaryWalk = walk
             }
             .sensoryFeedback(.warning, trigger: monitor.session?.alertCount)
         }
