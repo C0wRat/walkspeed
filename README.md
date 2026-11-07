@@ -59,17 +59,17 @@ audio and the SwiftUI interface on top.
 Open `WalkSpeed.xcodeproj`, choose your team under **Signing & Capabilities**,
 pick your iPhone and press **Run**.
 
-To do the same from the command line:
+To do the same from the command line, run the deploy script. It makes a
+release build, installs it on the first paired iPhone (or the one you name)
+and launches it:
 
 ```sh
-# Build, install and launch on a connected iPhone.
-xcodebuild -project WalkSpeed.xcodeproj -scheme WalkSpeed \
-  -destination 'platform=iOS,name=<iPhone name>' \
-  -derivedDataPath build/DerivedData -allowProvisioningUpdates build
-xcrun devicectl device install app --device '<iPhone name>' \
-  build/DerivedData/Build/Products/Debug-iphoneos/WalkSpeed.app
-xcrun devicectl device process launch --device '<iPhone name>' com.c0wrat.walkspeed
+scripts/deploy.sh
+scripts/deploy.sh '<iPhone name>'
 ```
+
+Run it from a Terminal window on the Mac. Code signing needs your login
+keychain, and background sessions such as SSH can't unlock it.
 
 Before the first install, set up the iPhone:
 
